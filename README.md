@@ -1,0 +1,2 @@
+# Mimo
+aws-project
