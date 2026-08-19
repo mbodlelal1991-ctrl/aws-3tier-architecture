@@ -1,0 +1,53 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Get Launch Template ID
+        id: get-lt
+        run: |
+          LT_ID=$(aws ec2 describe-launch-templates \
+            --launch-template-names app-launch-template \
+            --query 'LaunchTemplates[0].LaunchTemplateId' \
+            --output text)
+          echo "lt_id=$LT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Create new Launch Template version
+        id: new-version
+        run: |
+          NEW_VERSION=$(aws ec2 create-launch-template-version \
+            --launch-template-id ${{ steps.get-lt.outputs.lt_id }} \
+            --source-version '$Latest' \
+            --version-description "Deployed via GitHub Actions - ${{ github.sha }}" \
+            --query 'LaunchTemplateVersion.VersionNumber' \
+            --output text)
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Set new version as default
+        run: |
+          aws ec2 modify-launch-template \
+            --launch-template-id ${{ steps.get-lt.outputs.lt_id }} \
+            --default-version ${{ steps.new-version.outputs.version }}
+
+      - name: Trigger Auto Scaling Group instance refresh
+        run: |
+          aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name app-asg \
+            --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 120}'
