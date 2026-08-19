@@ -1,1 +1,11 @@
-
+- name: Create new Launch Template version
+        id: new-version
+        run: |
+          NEW_VERSION=$(aws ec2 create-launch-template-version \
+            --launch-template-id ${{ steps.get-lt.outputs.lt_id }} \
+            --source-version '$Latest' \
+            --launch-template-data '{}' \
+            --version-description "Deployed via GitHub Actions - ${{ github.sha }}" \
+            --query 'LaunchTemplateVersion.VersionNumber' \
+            --output text)
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
